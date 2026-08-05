@@ -26,12 +26,57 @@
     });
   }
 
+  const getCookie = (name) => {
+    const match = document.cookie.match(new RegExp(`(?:^|; )${name}=([^;]*)`));
+    return match ? decodeURIComponent(match[1]) : undefined;
+  };
+
+  const createEventId = () => {
+    if (window.crypto && typeof window.crypto.randomUUID === "function") {
+      return window.crypto.randomUUID();
+    }
+    return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  };
+
+  const trackEvent = (eventName) => {
+    const eventId = createEventId();
+
+    if (typeof window.fbq === "function") {
+      window.fbq("track", eventName, {}, { eventID: eventId });
+    }
+
+    const payload = {
+      event_name: eventName,
+      event_id: eventId,
+      event_source_url: window.location.href,
+      fbp: getCookie("_fbp"),
+      fbc: getCookie("_fbc"),
+    };
+
+    try {
+      const body = JSON.stringify(payload);
+      if (navigator.sendBeacon) {
+        const blob = new Blob([body], { type: "application/json" });
+        navigator.sendBeacon("/api/capi", blob);
+      } else {
+        fetch("/api/capi", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body,
+          keepalive: true,
+        }).catch(() => {});
+      }
+    } catch (_) {
+      // ignore tracking failures
+    }
+  };
+
+  trackEvent("PageView");
+
   document.querySelectorAll("[data-pixel-event]").forEach((el) => {
     el.addEventListener("click", () => {
       const eventName = el.getAttribute("data-pixel-event");
-      if (eventName && typeof window.fbq === "function") {
-        window.fbq("track", eventName);
-      }
+      if (eventName) trackEvent(eventName);
     });
   });
 
